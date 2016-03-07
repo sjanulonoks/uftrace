@@ -85,6 +85,8 @@ static TLS unsigned long plthook_saved_addr;
 static struct symtabs symtabs;
 static char *mcount_exename;
 
+extern __attribute__((weak)) void mcount_return(void);
+
 static uint64_t mcount_gettime(void)
 {
 	struct timespec ts;
@@ -531,8 +533,13 @@ void mcount_entry_filter_record(struct mcount_ret_stack *rstack,
 
 		if (mcount_enabled && (record_trace_data(rstack) < 0))
 			pr_err("error during record");
-	}
 
+		if (tr->flags & TRIGGER_FL_RECOVER) {
+			mcount_restore();
+			*rstack->parent_loc = (unsigned long) mcount_return;
+			rstack->flags |= MCOUNT_FL_RECOVER;
+		}
+	}
 }
 
 /* restore filter state from rstack */
@@ -545,6 +552,9 @@ void mcount_exit_filter_record(struct mcount_ret_stack *rstack)
 		mcount_filter.in_count--;
 	else if (rstack->flags & MCOUNT_FL_NOTRACE)
 		mcount_filter.out_count--;
+
+	if (rstack->flags & MCOUNT_FL_RECOVER)
+		mcount_reset();
 
 	mcount_filter.depth = rstack->filter_depth;
 
@@ -1375,8 +1385,6 @@ mcount_restore(void)
 	for (idx = mcount_rstack_idx - 1; idx >= 0; idx--)
 		*mcount_rstack[idx].parent_loc = mcount_rstack[idx].parent_ip;
 }
-
-extern __attribute__((weak)) void mcount_return(void);
 
 void __attribute__((visibility("default")))
 mcount_reset(void)
