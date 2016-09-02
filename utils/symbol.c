@@ -250,7 +250,9 @@ static int load_dynsymtab(struct symtabs *symtabs, const char *filename)
 	Elf_Scn *dynsym_sec, *relplt_sec, *sec;
 	Elf_Data *dynsym_data, *relplt_data;
 	size_t shstr_idx, dynstr_idx = 0;
+	GElf_Ehdr ehdr;
 	GElf_Addr plt_addr = 0;
+	GElf_Addr prev_addr;
 	size_t plt_entsize = 1;
 	int rel_type = SHT_NULL;
 	struct symtab *dsymtab = &symtabs->dsymtab;
@@ -309,6 +311,9 @@ static int load_dynsymtab(struct symtabs *symtabs, const char *filename)
 		goto out;
 	}
 
+	if (gelf_getehdr(elf, &ehdr) == NULL)
+		goto elf_error;
+
 	relplt_data = elf_getdata(relplt_sec, NULL);
 	if (relplt_data == NULL)
 		goto elf_error;
@@ -316,6 +321,11 @@ static int load_dynsymtab(struct symtabs *symtabs, const char *filename)
 	dynsym_data = elf_getdata(dynsym_sec, NULL);
 	if (dynsym_data == NULL)
 		goto elf_error;
+
+	if (ehdr.e_machine == EM_ARM)
+		plt_entsize = 12;  /* size of R_ARM_JUMP_SLOT */
+
+	prev_addr = plt_addr;
 
 	pr_dbg2("loading dynamic symbols from %s\n", filename);
 	for (idx = 0; idx < nr_rels; idx++) {
@@ -351,10 +361,12 @@ static int load_dynsymtab(struct symtabs *symtabs, const char *filename)
 
 		sym = &dsymtab->sym[dsymtab->nr_sym++];
 
-		sym->addr = esym.st_value ?: plt_addr + (idx+1) * plt_entsize;
+		sym->addr = esym.st_value ?: prev_addr + plt_entsize;
 		sym->size = plt_entsize;
 		sym->type = ST_PLT,
 		sym->name = demangle(name);
+
+		prev_addr = sym->addr;
 
 		pr_dbg3("[%zd] %c %lx + %-5u %s\n", dsymtab->nr_sym,
 			sym->type, sym->addr, sym->size, sym->name);
