@@ -1407,7 +1407,7 @@ int command_record(int argc, char *argv[], struct opts *opts)
 	nr_cpu = sysconf(_SC_NPROCESSORS_ONLN);
 
 	if (!opts->nr_thread) {
-		if (opts->kernel == 2)
+		if (opts->kernel && opts->kernel_depth > 10)
 			opts->nr_thread = nr_cpu;
 		else
 			opts->nr_thread = DIV_ROUND_UP(nr_cpu, 4);
